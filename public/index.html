@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+    <div id="loading" class="center-screen">
+        <div class="spinner"></div>
+        <p style="color:#999;font-size:14px;">Carregando tarefas...</p>
+    </div>
+    <div id="error" class="center-screen" style="display:none;">
+        <i class="ri-error-warning-line" style="font-size:36px;color:#ccc;"></i>
+        <p id="errorMsg" style="color:#666;font-size:14px;">Erro ao carregar</p>
+        <button class="btn btn-primary" onclick="loadTasks()"><i class="ri-refresh-line"></i> Tentar novamente</button>
+    </div>
+    <div id="main" style="display:none;">
+        <div class="header">
+            <div class="greeting">
+                <h1 id="greetingText">Olá!</h1>
+                <p>Gerencie suas tarefas com foco</p>
+            </div>
+            <div class="clock-card">
+                <i class="ri-time-line"></i>
+                <div>
+                    <div class="time" id="clockTime">00:00:00</div>
+                    <div class="date" id="clockDate">---</div>
+                </div>
+            </div>
+        </div>
+        <div class="progress-wrap">
+            <div class="progress-header">
+                <span>Progresso geral</span>
+                <strong><span id="progressPercent">0</span>%</strong>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width:0%;"></div>
+            </div>
+        </div>
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="add-form">
+            <h2>Adicionar nova tarefa</h2>
+            <div class="form-row">
+                <input type="text" id="taskInput" placeholder="O que você precisa fazer?" onkeydown="if(event.key==='Enter')addTask()">
+                <select id="taskCategory">
+                    <option value="hoje">Tarefas da Semana</option>
+                    <option value="futura">Lembretes</option>
+                    <option value="metas">Planejamento</option>
+                    <option value="escola">Escolar</option>
+                    <option value="secundarias">Cursos</option>
+                </select>
+                <select id="taskPriority">
+                    <option value="alta">Alta</option>
+                    <option value="media" selected>Média</option>
+                    <option value="baixa">Baixa</option>
+                </select>
+                <button class="btn btn-primary" onclick="addTask()"><i class="ri-add-line"></i> Adicionar</button>
+            </div>
+        </div>
+        <div class="tabs" id="tabs"></div>
+        <div class="task-list" id="taskList"></div>
+        <div class="focus">
+            <div>
+                <b>Mantenha o foco!</b>
+                <span>Uma tarefa de cada vez  //  comando (node server.js)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="editModal" onclick="closeEdit(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h2>Editar tarefa</h2>
+        <input style="background-color: aliceblue;" type="text" id="editInput" placeholder="Descrição da tarefa" onkeydown="if(event.key==='Enter')saveEdit()">
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeEdit()">Cancelar</button>
+            <button class="btn btn-primary" onclick="saveEdit()"><i class="ri-check-line"></i> Salvar</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="deleteModal" onclick="closeDeleteModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h2>Excluir tarefa</h2>
+        <p class="modal-text">Tem certeza que deseja excluir <strong id="deleteTaskName"></strong>? Essa ação não pode ser desfeita.</p>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancelar</button>
+            <button class="btn btn-danger" onclick="confirmDelete()"><i class="ri-delete-bin-line"></i> Excluir</button>
+        </div>
+    </div>
+</div>
+
+<script src="index.js"></script>
+</body>
+</html>
