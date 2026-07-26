@@ -1,286 +1,266 @@
-const API = "/blocks";
+/* ============================================================
+   CONFIGURAÇÃO DA API
+   ============================================================ */
+const API_URL = 'https://dashboard-production-fde4.up.railway.app';
 
-const DIAS = [
-    { key: "segunda", label: "Segunda-feira" },
-    { key: "terca",   label: "Terça-feira"   },
-    { key: "quarta",  label: "Quarta-feira"  },
-    { key: "quinta",  label: "Quinta-feira"  },
-    { key: "sexta",   label: "Sexta-feira"   },
-    { key: "sabado",  label: "Sábado"        },
-    { key: "domingo", label: "Domingo"       },
+/* ============================================================
+   PARTE 1: DADOS, CONFIGURAÇÃO E RENDERIZAÇÃO
+   ============================================================ */
+const categories = [
+    { key: 'hoje', label: 'Tarefas da Semana'},
+    { key: 'futura', label: 'Lembretes'},
+    { key: 'metas', label: 'Planejamento'},
+    { key: 'escola', label: 'Escola'},
+    { key: 'secundarias', label: 'Cursos'},
 ];
-
-const clockElement  = document.getElementById("clock");
-const blocksList    = document.getElementById("blocks-list");
-const dayTitleEl    = document.getElementById("day-title");
-const dayCountEl    = document.getElementById("day-count");
-const addBlockBtn   = document.getElementById("add-block-btn");
-
-let selectedDay = "segunda";
-let allBlocks   = [];      // { id, day, name, series, reps, completed }
-const saveTimers = {};     // debounce por id
-
-// ─────────────────────────────────────────────
-// RELÓGIO E DATA
-// ─────────────────────────────────────────────
-function updateClock() {
-    if (!clockElement) return;
-    clockElement.textContent = new Date().toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-    });
-}
-
-function setHeaderDate() {
-    const hoje = new Date().toLocaleDateString("pt-BR", {
-        weekday: "long",
-        day: "numeric",
-        month: "long"
-    });
-    const dateEl = document.getElementById("header-date");
-    if (dateEl) dateEl.textContent = hoje.charAt(0).toUpperCase() + hoje.slice(1);
-}
-
-// ─────────────────────────────────────────────
-// CARREGAR BLOCOS
-// ─────────────────────────────────────────────
-async function loadBlocks() {
+const priorityBadges = {
+    alta: { cls: 'badge-alta', icon: 'ri-arrow-up-circle-fill', label: 'Maior' },
+    media: { cls: 'badge-media', icon: 'ri-arrow-right-circle-fill', label: 'Média' },
+    baixa: { cls: 'badge-baixa', icon: 'ri-arrow-down-circle-fill', label: 'Baixa' },
+};
+var tasks = [];
+var activeTab = 'hoje';
+var editingId = null;
+var deletingId = null;
+function $(id) { return document.getElementById(id); }
+async function loadTasks() {
+    $('loading').style.display = 'flex';
+    $('error').style.display = 'none';
+    $('main').style.display = 'none';
     try {
-        const response = await fetch(API);
-        if (!response.ok) {
-            console.error("Falha ao carregar exercícios:", response.status, await response.text());
-            return;
-        }
-        allBlocks = await response.json();
-
-        renderDay(selectedDay);
-        updateHeaderStats();
-        updateDots();
-    } catch (err) {
-        console.error("Erro de rede ao carregar exercícios:", err);
+        var res = await fetch(API_URL + '/tasks');
+        if (!res.ok) throw new Error('Falha ao carregar');
+        tasks = await res.json();
+        $('loading').style.display = 'none';
+        $('main').style.display = 'block';
+        renderAll();
+    } catch (e) {
+        $('loading').style.display = 'none';
+        $('error').style.display = 'flex';
+        $('errorMsg').textContent = 'Não foi possível conectar ao servidor. O backend está rodando?';
     }
 }
-
-// ─────────────────────────────────────────────
-// RENDERIZAR A PÁGINA DO DIA
-// ─────────────────────────────────────────────
-function renderDay(day) {
-    const dia = DIAS.find(d => d.key === day);
-    dayTitleEl.textContent = dia.label;
-
-    const blocksOfDay = allBlocks.filter(b => b.day === day);
-    dayCountEl.textContent = `${blocksOfDay.length} exercício${blocksOfDay.length !== 1 ? "s" : ""}`;
-
-    blocksList.innerHTML = "";
-
-    if (blocksOfDay.length === 0) {
-        const empty = document.createElement("p");
-        empty.className = "empty-state";
-        empty.textContent = "Nenhum exercício adicionado ainda para este dia.";
-        blocksList.appendChild(empty);
+function renderAll() {
+    renderGreeting();
+    renderProgress();
+    renderStats();
+    renderTabs();
+    renderTasks();
+}
+function renderGreeting() {
+    var h = new Date().getHours();
+    var g = 'Boa noite, Arthur';
+    if (h < 12) g = 'Bom dia, Arthur';
+    else if (h < 18) g = 'Boa tarde, Arthur';
+    $('greetingText').textContent = g + '!';
+}
+function renderProgress() {
+    var total = tasks.length;
+    var done = 0;
+    for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].completed) done++;
+    }
+    var pct = total ? Math.round((done / total) * 100) : 0;
+    $('progressPercent').textContent = pct;
+    $('progressFill').style.width = pct + '%';
+}
+function renderStats() {
+    var counts = {};
+    for (var i = 0; i < categories.length; i++) {
+        counts[categories[i].key] = 0;
+    }
+    var concluidas = 0;
+    for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].completed) concluidas++;
+        else if (counts[tasks[i].category] !== undefined) counts[tasks[i].category]++;
+    }
+    var html = '';
+    for (var i = 0; i < categories.length; i++) {
+        var c = categories[i];
+        html += '<div class="stat-card ' + (activeTab === c.key ? 'active' : '') + '" onclick="setTab(\'' + c.key + '\')">' +
+            '<i class="' + c.icon + '"></i>' +
+            '<div class="stat-label">' + c.label + '</div>' +
+            '<div class="stat-num">' + counts[c.key] + '</div>' +
+            '</div>';
+    }
+    html += '<div class="stat-card ' + (activeTab === 'concluidas' ? 'active' : '') + '" onclick="setTab(\'concluidas\')">' +
+        '<div class="stat-label">Concluídas</div>' +
+        '<div class="stat-num">' + concluidas + '</div>' +
+        '</div>';
+    $('statsGrid').innerHTML = html;
+}
+function renderTabs() {
+    var html = '';
+    for (var i = 0; i < categories.length; i++) {
+        var c = categories[i];
+        html += '<button class="tab ' + (activeTab === c.key ? 'active' : '') + '" onclick="setTab(\'' + c.key + '\')">' + c.label + '</button>';
+    }
+    html += '<button class="tab ' + (activeTab === 'concluidas' ? 'active' : '') + '" onclick="setTab(\'concluidas\')">Concluídas</button>';
+    $('tabs').innerHTML = html;
+}
+function renderTasks() {
+    var filtered = [];
+    for (var i = 0; i < tasks.length; i++) {
+        var t = tasks[i];
+        if (activeTab === 'concluidas') {
+            if (t.completed) filtered.push(t);
+        } else {
+            if (t.category === activeTab && !t.completed) filtered.push(t);
+        }
+    }
+    if (filtered.length === 0) {
+        var msg = activeTab === 'concluidas' ? 'Nenhuma tarefa concluída ainda' : 'Nenhuma tarefa nesta categoria';
+        var sub = activeTab === 'concluidas' ? 'Conclua uma tarefa para vê-la aqui' : 'Adicione uma nova tarefa acima';
+        $('taskList').innerHTML = '<div class="empty"><i class="ri-task-line"></i><p>' + msg + '</p><p class="small">' + sub + '</p></div>';
         return;
     }
-
-    blocksOfDay.forEach(block => {
-        blocksList.appendChild(buildBlockElement(block));
-    });
+    var html = '';
+    for (var i = 0; i < filtered.length; i++) {
+        var t = filtered[i];
+        var pb = priorityBadges[t.priority] || priorityBadges['media'];
+        html += '<div class="task-item ' + (t.completed ? 'done' : '') + '">' +
+            '<span class="badge ' + pb.cls + '"><i class="' + pb.icon + '"></i> ' + pb.label + '</span>' +
+            '<span class="task-text">' + escapeHtml(t.description) + '</span>' +
+            '<div class="task-actions">' +
+            '<button class="icon-btn done-btn" onclick="toggleTask(' + t.id + ')" title="' + (t.completed ? 'Reabrir' : 'Concluir') + '">' +
+            '<i class="' + (t.completed ? 'ri-refresh-line' : 'ri-check-line') + '"></i>' +
+            '</button>' +
+            '<button class="icon-btn" onclick="openEdit(' + t.id + ')" title="Editar">' +
+            '<i class="ri-pencil-line"></i>' +
+            '</button>' +
+            '<button class="icon-btn" onclick="deleteTask(' + t.id + ')" title="Excluir">' +
+            '<i class="ri-delete-bin-line"></i>' +
+            '</button>' +
+            '</div>' +
+            '</div>';
+    }
+    $('taskList').innerHTML = html;
 }
-
-function buildBlockElement(block) {
-    const div = document.createElement("div");
-    div.className = "exercise-block" + (block.completed ? " completed" : "");
-    div.dataset.id = block.id;
-
-    div.innerHTML = `
-        <div class="exercise-top">
-            <input
-                type="text"
-                class="exercise-name-input"
-                placeholder="Nome do exercício"
-                value="${escapeHtml(block.name || "")}"
-            >
-            <button class="exercise-remove" title="Remover exercício">✕</button>
-        </div>
-        <div class="exercise-bottom">
-            <div class="field-group">
-                <label>Séries</label>
-                <input type="number" min="1" class="field-series" value="${escapeHtml(block.series ?? "")}">
-            </div>
-            <div class="field-group">
-                <label>Repetições</label>
-                <input type="text" class="field-reps" placeholder="ex: 8-12" value="${escapeHtml(block.reps ?? "")}">
-            </div>
-            <button class="btn-concluida">${block.completed ? "Reabrir" : "Concluir"}</button>
-        </div>
-    `;
-
-    const nameInput   = div.querySelector(".exercise-name-input");
-    const seriesInput = div.querySelector(".field-series");
-    const repsInput    = div.querySelector(".field-reps");
-    const removeBtn    = div.querySelector(".exercise-remove");
-    const concluirBtn  = div.querySelector(".btn-concluida");
-
-    nameInput.addEventListener("input", () => scheduleSave(block.id, { name: nameInput.value }));
-    seriesInput.addEventListener("input", () => scheduleSave(block.id, { series: seriesInput.value }));
-    repsInput.addEventListener("input", () => scheduleSave(block.id, { reps: repsInput.value }));
-
-    removeBtn.addEventListener("click", () => deleteBlock(block.id));
-    concluirBtn.addEventListener("click", () => toggleCompleted(block.id));
-
-    return div;
-}
-
 function escapeHtml(str) {
-    return String(str).replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+function setTab(tab) {
+    activeTab = tab;
+    renderStats();
+    renderTabs();
+    renderTasks();
 }
 
-// ─────────────────────────────────────────────
-// SALVAR COM DEBOUNCE (nome / séries / repetições)
-// ─────────────────────────────────────────────
-function scheduleSave(id, changes) {
-    Object.assign(findBlock(id), changes);
-
-    clearTimeout(saveTimers[id]);
-    saveTimers[id] = setTimeout(() => updateBlock(id, changes), 500);
-}
-
-function findBlock(id) {
-    return allBlocks.find(b => b.id === id);
-}
-
-async function updateBlock(id, changes) {
-    await fetch(`${API}/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(changes),
-    });
-    updateHeaderStats();
-    updateDots();
-}
-
-// ─────────────────────────────────────────────
-// CONCLUIR / REABRIR
-// ─────────────────────────────────────────────
-async function toggleCompleted(id) {
-    const block = findBlock(id);
-    block.completed = !block.completed;
-
-    const el = blocksList.querySelector(`.exercise-block[data-id="${id}"]`);
-    if (el) {
-        el.classList.toggle("completed", block.completed);
-        el.querySelector(".btn-concluida").textContent = block.completed ? "Reabrir" : "Concluir";
-    }
-
-    await fetch(`${API}/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completed: block.completed }),
-    });
-
-    updateHeaderStats();
-    updateDots();
-}
-
-// ─────────────────────────────────────────────
-// ADICIONAR / REMOVER BLOCO
-// ─────────────────────────────────────────────
-addBlockBtn.addEventListener("click", async () => {
+/* ============================================================
+   PARTE 2: AÇÕES (ADICIONAR, CONCLUIR, EDITAR, EXCLUIR)
+   ============================================================ */
+async function addTask() {
+    var desc = $('taskInput').value.trim();
+    if (!desc) return;
+    var category = $('taskCategory').value;
+    var priority = $('taskPriority').value;
     try {
-        const response = await fetch(API, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ day: selectedDay, name: "", series: "", reps: "" }),
+        await fetch(API_URL + '/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: desc, category: category, priority: priority })
         });
-
-        if (!response.ok) {
-            const texto = await response.text();
-            console.error("Falha ao criar exercício:", response.status, texto);
-            alert(`Não consegui adicionar o exercício (erro ${response.status}). Veja o console (F12) para detalhes.`);
-            return;
-        }
-
-        const created = await response.json();
-
-        allBlocks.push({
-            id: created.id ?? created.insertId,
-            day: selectedDay,
-            name: "",
-            series: "",
-            reps: "",
-            completed: false,
+        $('taskInput').value = '';
+        $('taskPriority').value = 'media';
+        await loadTasks();
+    } catch (e) {
+        console.error('Erro ao adicionar:', e);
+    }
+}
+async function toggleTask(id) {
+    var task = null;
+    for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].id === id) { task = tasks[i]; break; }
+    }
+    if (!task) return;
+    try {
+        await fetch(API_URL + '/tasks/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: task.completed ? 0 : 1 })
         });
+        await loadTasks();
+    } catch (e) {
+        console.error('Erro ao alternar:', e);
+    }
+}
+function openEdit(id) {
+    var task = null;
+    for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].id === id) { task = tasks[i]; break; }
+    }
+    if (!task) return;
+    editingId = id;
+    $('editInput').value = task.description;
+    $('editModal').classList.add('show');
+    setTimeout(function() { $('editInput').focus(); $('editInput').select(); }, 50);
+}
+function closeEdit(e) {
+    if (e && e.target !== $('editModal')) return;
+    $('editModal').classList.remove('show');
+    editingId = null;
+}
+async function saveEdit() {
+    var desc = $('editInput').value.trim();
+    if (!desc || !editingId) return;
+    try {
+        await fetch(API_URL + '/tasks/' + editingId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: desc })
+        });
+        $('editModal').classList.remove('show');
+        editingId = null;
+        await loadTasks();
+    } catch (e) {
+        console.error('Erro ao editar:', e);
+    }
+}
+function deleteTask(id) {
+    var task = null;
+    for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].id === id) { task = tasks[i]; break; }
+    }
+    if (!task) return;
+    deletingId = id;
+    $('deleteTaskName').textContent = '"' + task.description + '"';
+    $('deleteModal').classList.add('show');
+}
+function closeDeleteModal(e) {
+    if (e && e.target !== $('deleteModal')) return;
+    $('deleteModal').classList.remove('show');
+    deletingId = null;
+}
+async function confirmDelete() {
+    if (!deletingId) return;
+    try {
+        await fetch(API_URL + '/tasks/' + deletingId, { method: 'DELETE' });
+        $('deleteModal').classList.remove('show');
+        deletingId = null;
+        await loadTasks();
+    } catch (e) {
+        console.error('Erro ao excluir:', e);
+    }
+}
 
-        renderDay(selectedDay);
-        updateHeaderStats();
-        updateDots();
-
-        const lastInput = blocksList.querySelector(".exercise-block:last-child .exercise-name-input");
-        if (lastInput) lastInput.focus();
-    } catch (err) {
-        console.error("Erro de rede ao adicionar exercício:", err);
-        alert("Não consegui falar com o servidor. Ele está rodando? Veja o console (F12) para detalhes.");
+/* ============================================================
+   PARTE 3: RELÓGIO, ATALHOS DE TECLADO E INICIALIZAÇÃO
+   ============================================================ */
+function updateClock() {
+    var now = new Date();
+    $('clockTime').textContent = now.toLocaleTimeString('pt-BR');
+    $('clockDate').textContent = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        $('editModal').classList.remove('show');
+        $('deleteModal').classList.remove('show');
+        editingId = null;
+        deletingId = null;
     }
 });
-
-async function deleteBlock(id) {
-    allBlocks = allBlocks.filter(b => b.id !== id);
-    renderDay(selectedDay);
-    updateHeaderStats();
-    updateDots();
-
-    await fetch(`${API}/${id}`, { method: "DELETE" });
-}
-
-// ─────────────────────────────────────────────
-// ESTATÍSTICAS DO HEADER
-// ─────────────────────────────────────────────
-function updateHeaderStats() {
-    const concluidos = allBlocks.filter(b => b.completed).length;
-    const pendentes  = allBlocks.length - concluidos;
-    const total      = allBlocks.length;
-    const pct        = total > 0 ? Math.round((concluidos / total) * 100) : 0;
-
-    document.getElementById("total-pendentes").textContent  = pendentes;
-    document.getElementById("total-concluidos").textContent = concluidos;
-    document.getElementById("progress-bar").style.width      = pct + "%";
-    document.getElementById("progress-label").textContent =
-        `${concluidos} de ${total} exercício${total !== 1 ? "s" : ""} concluído${concluidos !== 1 ? "s" : ""}`;
-}
-
-// ─────────────────────────────────────────────
-// BOLINHAS NAS ABAS
-// ─────────────────────────────────────────────
-function updateDots() {
-    DIAS.forEach(d => {
-        const dot = document.getElementById(`dot-${d.key}`);
-        if (!dot) return;
-
-        const blocksOfDay = allBlocks.filter(b => b.day === d.key);
-        const hasBlocks = blocksOfDay.length > 0;
-        const allDone = hasBlocks && blocksOfDay.every(b => b.completed);
-
-        dot.classList.toggle("filled", hasBlocks);
-        dot.classList.toggle("done", allDone);
-    });
-}
-
-// ─────────────────────────────────────────────
-// TROCA DE ABAS
-// ─────────────────────────────────────────────
-document.querySelectorAll(".tab").forEach(tab => {
-    tab.onclick = () => {
-        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-        tab.classList.add("active");
-        selectedDay = tab.dataset.day;
-        renderDay(selectedDay);
-    };
-});
-
-// ─────────────────────────────────────────────
-// INIT
-// ─────────────────────────────────────────────
-setHeaderDate();
-updateClock();
-setInterval(updateClock, 1000);
-loadBlocks();
+loadTasks();
